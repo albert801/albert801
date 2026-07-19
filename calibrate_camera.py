@@ -18,6 +18,10 @@ _MAX_RMSE_PX = 0.5
 # Flag a single image whose reprojection error exceeds this multiple of the mean.
 _PER_IMAGE_WARN_FACTOR = 2.0
 
+# Soft recommendation: below this many usable boards the fit is under-constrained
+# (2 is the hard technical floor). Warned, not enforced.
+_RECOMMENDED_MIN_IMAGES = 10
+
 
 def calibrate_camera(checkerboard_images: list, board_size: tuple) -> dict:
     """Estimate the intrinsic parameters of a single physical camera.
@@ -49,6 +53,13 @@ def calibrate_camera(checkerboard_images: list, board_size: tuple) -> dict:
     Raises:
         ValueError: If fewer than two boards are detected, or if the overall
             RMSE exceeds 0.5 px (the calibration is rejected as unreliable).
+
+    Warns:
+        UserWarning: If fewer than 10 usable boards are detected. Two is the
+            hard technical floor, but below ~10 well-spread views the fit is
+            under-constrained -- focal length and distortion can be unreliable
+            even when RMSE looks low -- so this is a soft recommendation, not a
+            rejection.
 
     Important -- what these numbers mean:
         These intrinsics describe **one specific physical camera** (this
@@ -127,6 +138,17 @@ def calibrate_camera(checkerboard_images: list, board_size: tuple) -> dict:
             f"Only {len(obj_points)} usable board(s) detected out of "
             f"{len(checkerboard_images)} image(s); need at least 2 (ideally "
             "10-20 well-spread views) for a stable calibration."
+        )
+
+    # Soft recommendation above the hard floor: few views can yield a low RMSE
+    # while leaving focal length and distortion under-constrained.
+    if len(obj_points) < _RECOMMENDED_MIN_IMAGES:
+        warnings.warn(
+            f"Only {len(obj_points)} usable board(s) detected; calibration "
+            f"will run but is under-constrained below {_RECOMMENDED_MIN_IMAGES} "
+            "well-spread views. Focal length and distortion may be unreliable "
+            "even if RMSE looks low. Consider adding more high-angle views.",
+            stacklevel=2,
         )
 
     rmse, camera_matrix, dist_coeffs, rvecs, tvecs = cv2.calibrateCamera(
